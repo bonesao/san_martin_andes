@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>San Martín: The Ruling (prototype atom v1 – video background)</title>
+<style>
+  :root { --bg:#05070b; --ink:#ece6d6; --dim:#a29f96; --accent:#d4ae66; --line:rgba(236,230,214,.22); }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--ink); overflow:hidden; }
+  body { font-family:Georgia,"Times New Roman",serif; }
+
+  /* ---- Background video layer ---- */
+  #bg { position:fixed; inset:0; width:100%; height:100%; object-fit:cover; object-position:center 35%;
+        transition:filter 3s ease; z-index:0; }
+  body.dawn #bg { filter:brightness(1.15) saturate(.8) sepia(.35) hue-rotate(-12deg); }
+  #tint { position:fixed; inset:0; z-index:1; pointer-events:none;
+          background:radial-gradient(ellipse at 50% 40%, transparent 45%, rgba(0,0,0,.55) 100%); }
+  #scrim { position:fixed; left:0; right:0; bottom:0; height:62%; z-index:1; pointer-events:none;
+           background:linear-gradient(to top, rgba(3,5,9,.94) 0%, rgba(3,5,9,.85) 45%, rgba(3,5,9,0) 100%); }
+
+  /* ---- HUD: day report, top-left ---- */
+  .report { position:fixed; top:16px; left:16px; z-index:3; max-width:min(300px,60vw);
+            background:rgba(5,7,11,.62); backdrop-filter:blur(3px); border:1px solid var(--line);
+            padding:10px 14px; font-family:"Courier New",monospace; font-size:.82rem; color:var(--dim); }
+  .report div:first-child { color:var(--ink); letter-spacing:.14em; text-transform:uppercase; margin-bottom:6px; }
+  .report div + div { display:flex; justify-content:space-between; gap:16px; padding:1px 0; }
+  .report span:last-child { color:var(--ink); }
+  .kicker { position:fixed; top:16px; right:16px; z-index:3; color:var(--ink); text-shadow:0 1px 6px #000;
+            font-size:.78rem; letter-spacing:.18em; text-transform:uppercase; text-align:right; max-width:40vw; }
+
+  /* ---- Overlay text panel, bottom ---- */
+  #panel { position:fixed; left:0; right:0; bottom:0; z-index:2; display:flex; justify-content:center;
+           padding:0 20px 28px; max-height:62vh; }
+  #stage { width:100%; max-width:760px; overflow-y:auto; scrollbar-width:none; padding-top:24px;
+           display:flex; flex-direction:column; }
+  #stage::-webkit-scrollbar { display:none; }
+  #stage > :first-child { margin-top:auto; } /* bottom-anchor short content */
+  p { font-size:1.15rem; line-height:1.6; margin:0 0 .9em; text-shadow:0 1px 8px #000; }
+  p.old { opacity:.5; transition:opacity 1s; }
+  .fade { opacity:0; transform:translateY(6px); transition:opacity .9s ease, transform .9s ease; }
+  .fade.show { opacity:1; transform:none; }
+  .gone { opacity:0 !important; height:0; margin:0; overflow:hidden; transition:opacity .6s, height .6s .4s, margin .6s .4s; }
+  .law { border-left:2px solid var(--accent); padding-left:14px; color:var(--accent); font-style:italic; }
+  .choices { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:6px; }
+  button { font:inherit; font-size:1rem; text-align:left; color:var(--ink); background:rgba(8,11,17,.72);
+           backdrop-filter:blur(3px); border:1px solid var(--line); padding:12px 14px; cursor:pointer; line-height:1.35; }
+  button small { display:block; color:var(--dim); font-size:.82rem; margin-top:4px; }
+  button:hover:not(:disabled), button:focus-visible { border-color:var(--accent); background:rgba(30,24,12,.8); outline:none; }
+  button:disabled { opacity:.35; cursor:default; }
+  button.picked:disabled { opacity:1; border-color:var(--accent); }
+  .notice { color:var(--accent); font-size:.98rem; letter-spacing:.04em; margin:0 0 .4em; }
+  .end { color:var(--dim); font-style:italic; margin-top:1em; }
+  .restart { margin-top:14px; font-size:.9rem; color:var(--dim); align-self:flex-start; }
+
+  /* ---- Recap (story log) ---- */
+  #recapBtn { position:fixed; bottom:14px; left:14px; z-index:4; padding:6px 10px; font-size:.75rem; letter-spacing:.1em;
+              text-transform:uppercase; color:var(--dim); display:none; }
+  #recapBtn.inline { position:static; display:block; align-self:flex-start; margin:0 0 12px; font-size:.8rem; color:var(--accent);
+                     border-color:rgba(212,174,102,.45); }
+  #recap { position:fixed; inset:0; z-index:5; display:none; background:rgba(3,5,9,.88); backdrop-filter:blur(4px);
+           overflow-y:auto; padding:56px 20px; }
+  #recap.open { display:block; }
+  #recap .inner { max-width:700px; margin:0 auto; }
+  #recap h2 { font-size:.8rem; letter-spacing:.18em; text-transform:uppercase; color:var(--dim); font-weight:normal; margin:0 0 20px; }
+  #recap .close { position:fixed; top:14px; right:14px; font-size:.8rem; padding:6px 12px; }
+
+  /* ---- Sound toggle ---- */
+  #snd { position:fixed; bottom:14px; right:14px; z-index:4; padding:6px 10px; font-size:.75rem; letter-spacing:.1em;
+         text-transform:uppercase; color:var(--dim); }
+
+  @media (max-width:640px) { .choices { grid-template-columns:1fr; } p { font-size:1.02rem; } #panel{max-height:70vh;} }
+  @media (prefers-reduced-motion:reduce) { .fade { transition:none; transform:none; } #bg { transition:none; } }
+</style>
+</head>
+<body>
+<video id="bg" src="background.mp4" autoplay muted loop playsinline preload="auto" aria-hidden="true"></video>
+<div id="tint"></div>
+<div id="scrim"></div>
+<div id="hud"></div>
+<div id="panel"><main id="stage" aria-live="polite"></main></div>
+<button id="recapBtn" type="button">Recap</button>
+<div id="recap" role="dialog" aria-label="Story so far"><button class="close" type="button">Close ✕</button><div class="inner"></div></div>
+<button id="snd" type="button" aria-pressed="false">Sound: off</button>
+
+<script>
+// ---- Content (same placeholder text as v0: easy to rewrite) ----------------------
+const SCENE = {
+  report: { title: "End of day report", rows: [["Day", "9"], ["Army", "4,870 men"], ["Rations", "6 days"], ["Distance to go", "210 km"]] }, // mock numbers, fixed
+  kicker: "Night · Andes · Somewhere above the snowline",
+  paragraphs: [
+    "The wind has not stopped for two days. The fires are low, and the men sit close to them without speaking.",
+    "Then a shout, and a knife in the firelight. Ortiz, a soldier, is on his knees with a split lip. Quispe, the arriero, stands over him, blade drawn, shaking.",
+    "A ration of dried meat lies in the dirt between them. It came out of Quispe's bag while he slept.",
+    "Ortiz says it was for a friend who can no longer walk. Quispe says he has not been paid in three months, and that the mules eat before he does.",
+    "Everyone is watching you."
+  ],
+  law: "Every man in this camp heard it before we left Mendoza: a blade drawn inside the camp is punished.",
+  prompt: "What is your ruling?",
+  choices: [
+    { id:"example", label:"Make an example of Ortiz", sub:"Flog him before the camp. Theft cannot go unanswered." },
+    { id:"dismiss", label:"Dismiss Quispe under the camp law", sub:"Take his blade and send him back down the mountain." },
+    { id:"both",    label:"Punish both", sub:"Three nights on sentry for Ortiz, and Quispe's knife taken away." },
+    { id:"pardon",  label:"Pardon both, and split the ration", sub:"No one is punished tonight." }
+  ]
+};
+
+const OUTCOMES = {
+  example: {
+    image: ["At dawn the camp moves in silence. Ortiz walks, because he has to, with his back stiff under his coat. Behind him a sick man is carried between two others, and no one will look at you."],
+    notices: ["The soldiers will remember this.", "Ortiz will remember this."],
+    end: "Order holds. Nobody steals now."
+  },
+  dismiss: {
+    image: ["Quispe goes down the trail alone before first light, the blade left in the snow behind him. The mule string leaves camp short a driver, and the animals are restless."],
+    notices: ["The arrieros will remember this.", "The soldiers will remember this."],
+    end: "The camp law stands, and the mules are harder to handle."
+  },
+  both: {
+    image: ["Ortiz is given three nights on sentry, in the worst of the cold, and his sick friend goes uncared for while he stands watch. Quispe's knife is taken and put in your saddlebag; he walks beside his mules without a word, a driver with empty hands. Neither is broken, but neither is easy around you."],
+    notices: ["Ortiz will remember this.", "Quispe will remember this.", "The camp will remember this."],
+    end: "The law was kept, and no one was ruined. Everyone paid a little."
+  },
+  pardon: {
+    image: ["The ration is cut in two. Ortiz eats half and carries the rest back to his friend; Quispe takes the other half without a word, and neither thanks you. By dawn the men are saying you are soft."],
+    notices: ["Ortiz will remember this.", "Quispe will remember this.", "Some of the men will remember this."],
+    end: "No one was punished. The food will not last as long."
+  }
+};
+
+// ---- Engine ----------------------------------------------------------------------
+const stage = document.getElementById("stage");
+const hud = document.getElementById("hud");
+const LOG = []; // every story line shown, for the Recap overlay
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const speed = parseFloat(new URLSearchParams(location.search).get("speed") || 1); // ?speed=0.2 to test fast
+const delay = ms => wait(ms * speed);
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text) e.textContent = text;
+  return e;
+}
+async function reveal(node, parent, pauseAfter = 1400) {
+  // dim the previous paragraph so the newest line is the focus
+  parent.querySelectorAll("p:not(.old):not(.law):not(.notice)").forEach(p => p.classList.add("old"));
+  if (parent === stage && node.tagName === "P") { LOG.push({ cls: node.className, text: node.textContent }); recapBtn.style.display = "block"; }
+  node.classList.add("fade");
+  parent.appendChild(node);
+  stage.scrollTo({ top: stage.scrollHeight, behavior: "smooth" });
+  await delay(30);
+  node.classList.add("show");
+  await delay(pauseAfter);
+}
+
+// Hidden state for a possible v2. Never shown to the player.
+window.atomResult = null;
+
+async function play() {
+  dockRecap();
+  stage.replaceChildren(); hud.replaceChildren();
+  LOG.length = 0; recapBtn.style.display = "none";
+  document.body.classList.remove("dawn");
+  window.atomResult = null;
+
+  const rep = el("div", "report");
+  rep.appendChild(el("div", "", SCENE.report.title));
+  for (const [k, v] of SCENE.report.rows) {
+    const row = el("div"); row.append(el("span", "", k), el("span", "", v)); rep.appendChild(row);
+  }
+  await reveal(rep, hud, 1800);
+  await reveal(el("div", "kicker", SCENE.kicker), hud, 900);
+  for (const t of SCENE.paragraphs) await reveal(el("p", "", t), stage, 1500);
+  await reveal(el("p", "law", SCENE.law), stage, 2200);
+
+  // story clears away; only the prompt + choices remain over the fire
+  stage.querySelectorAll("p").forEach(p => p.classList.add("gone"));
+  await delay(900);
+  stage.replaceChildren();
+  recapBtn.textContent = "↺ Recap the story"; recapBtn.classList.add("inline"); stage.appendChild(recapBtn); // right above the prompt
+  await reveal(el("p", "", SCENE.prompt), stage, 1400); // the pause before the choice
+
+  const box = el("div", "choices");
+  const btns = SCENE.choices.map(c => {
+    const b = el("button"); b.append(c.label); b.appendChild(el("small", "", c.sub)); b.dataset.id = c.id; return b;
+  });
+  btns.forEach(b => box.appendChild(b));
+  await reveal(box, stage, 0);
+  btns.forEach(b => b.addEventListener("click", () => { b.classList.add("picked"); resolve(b.dataset.id, btns); }, { once:true }));
+}
+
+async function resolve(id, btns) {
+  btns.forEach(b => b.disabled = true);
+  const out = OUTCOMES[id];
+  window.atomResult = { scene:"camp", choice:id, remembered_by: out.notices.map(n => n.replace(" will remember this.", "")) };
+  await delay(1800);
+  dockRecap();
+  stage.replaceChildren(); hud.replaceChildren();
+  document.body.classList.add("dawn"); // video warms toward morning
+  await reveal(el("div", "kicker", "Dawn"), hud, 900);
+  for (const t of out.image) await reveal(el("p", "", t), stage, 2400);
+  for (const n of out.notices) await reveal(el("p", "notice", n), stage, 1600);
+  await reveal(el("p", "end", out.end), stage, 800);
+  const again = el("button", "restart", "Play again");
+  again.addEventListener("click", play);
+  await reveal(again, stage, 0);
+}
+
+// ---- Recap: everything shown so far, readable at any point ------------------------
+const recap = document.getElementById("recap"), recapBtn = document.getElementById("recapBtn");
+function openRecap() {
+  const inner = recap.querySelector(".inner");
+  inner.replaceChildren(el("h2", "", "The story so far"));
+  LOG.forEach(l => inner.appendChild(el("p", l.cls.replace(/\b(fade|show|old)\b/g, "").trim(), l.text)));
+  recap.classList.add("open");
+  recap.scrollTop = 0;
+}
+const closeRecap = () => recap.classList.remove("open");
+function dockRecap() { // put the button back in its fixed corner spot
+  recapBtn.classList.remove("inline"); recapBtn.textContent = "Recap"; document.body.appendChild(recapBtn);
+}
+recapBtn.addEventListener("click", openRecap);
+recap.addEventListener("click", closeRecap);
+addEventListener("keydown", e => { if (e.key === "Escape") closeRecap(); });
+
+// ---- Sound toggle (browsers only allow autoplay when muted) -----------------------
+const vid = document.getElementById("bg"), snd = document.getElementById("snd");
+snd.addEventListener("click", () => {
+  vid.muted = !vid.muted;
+  if (!vid.muted) vid.play().catch(() => {});
+  snd.textContent = "Sound: " + (vid.muted ? "off" : "on");
+  snd.setAttribute("aria-pressed", String(!vid.muted));
+});
+vid.play().catch(() => {}); // fallback: static first frame if autoplay is blocked
+
+play();
+</script>
+</body>
+</html>

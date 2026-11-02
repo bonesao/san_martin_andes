@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>San Martín: The Ruling (prototype atom v0)</title>
+<style>
+  :root { --bg:#0d1118; --ink:#e8e2d4; --dim:#8b8a85; --accent:#c9a45c; --line:#2a2f3a; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--ink); }
+  body { font-family:Georgia,"Times New Roman",serif; display:flex; justify-content:center; }
+  main { width:100%; max-width:640px; padding:48px 20px 80px; }
+  .kicker { color:var(--dim); font-size:.8rem; letter-spacing:.18em; text-transform:uppercase; margin-bottom:28px; }
+  p { font-size:1.12rem; line-height:1.65; margin:0 0 1.1em; }
+  .fade { opacity:0; transform:translateY(6px); transition:opacity .9s ease, transform .9s ease; }
+  .fade.show { opacity:1; transform:none; }
+  .report { border:1px solid var(--line); padding:14px 16px; margin-bottom:32px; font-family:"Courier New",monospace; font-size:.9rem; color:var(--dim); }
+  .report div:first-child { color:var(--ink); letter-spacing:.14em; text-transform:uppercase; margin-bottom:8px; }
+  .report div + div { display:flex; justify-content:space-between; gap:12px; padding:2px 0; }
+  .report span:last-child { color:var(--ink); }
+  .law { border-left:2px solid var(--accent); padding-left:14px; color:var(--accent); font-style:italic; }
+  .choices { display:flex; flex-direction:column; gap:12px; margin-top:28px; }
+  button { font:inherit; font-size:1.05rem; text-align:left; color:var(--ink); background:transparent;
+           border:1px solid var(--line); padding:14px 16px; cursor:pointer; line-height:1.4; }
+  button small { display:block; color:var(--dim); font-size:.85rem; margin-top:4px; }
+  button:hover:not(:disabled), button:focus-visible { border-color:var(--accent); outline:none; }
+  button:disabled { opacity:.35; cursor:default; }
+  .notice { color:var(--accent); font-size:.95rem; letter-spacing:.04em; margin:0 0 .5em; }
+  .end { color:var(--dim); font-style:italic; margin-top:2em; }
+  .restart { margin-top:36px; font-size:.9rem; color:var(--dim); }
+  .hint { color:var(--dim); font-size:.8rem; margin-top:24px; }
+  @media (prefers-reduced-motion:reduce) { .fade { transition:none; transform:none; } }
+</style>
+</head>
+<body>
+<main id="stage" aria-live="polite"></main>
+
+<script>
+// ---- Content (placeholder text: easy to rewrite) ---------------------------------
+const SCENE = {
+  report: { title: "End of day report", rows: [["Day", "9"], ["Army", "4,870 men"], ["Rations", "6 days"], ["Distance to go", "210 km"]] }, // mock numbers, fixed
+  kicker: "Night · Andes · Somewhere above the snowline",
+  paragraphs: [
+    "The wind has not stopped for two days. The fires are low, and the men sit close to them without speaking.",
+    "Then a shout, and a knife in the firelight. Ortiz, a soldier, is on his knees with a split lip. Quispe, the arriero, stands over him, blade drawn, shaking.",
+    "A ration of dried meat lies in the dirt between them. It came out of Quispe's bag while he slept.",
+    "Ortiz says it was for a friend who can no longer walk. Quispe says he has not been paid in three months, and that the mules eat before he does.",
+    "Everyone is watching you."
+  ],
+  law: "Every man in this camp heard it before we left Mendoza: a blade drawn inside the camp is punished.",
+  prompt: "What is your ruling?",
+  choices: [
+    { id:"example", label:"Make an example of Ortiz", sub:"Flog him before the camp. Theft cannot go unanswered." },
+    { id:"dismiss", label:"Dismiss Quispe under the camp law", sub:"Take his blade and send him back down the mountain." },
+    { id:"both",    label:"Punish both", sub:"Three nights on sentry for Ortiz, and Quispe's knife taken away." },
+    { id:"pardon",  label:"Pardon both, and split the ration", sub:"No one is punished tonight." }
+  ]
+};
+
+const OUTCOMES = {
+  example: {
+    image: ["At dawn the camp moves in silence. Ortiz walks, because he has to, with his back stiff under his coat. Behind him a sick man is carried between two others, and no one will look at you."],
+    notices: ["The soldiers will remember this.", "Ortiz will remember this."],
+    end: "Order holds. Nobody steals now."
+  },
+  dismiss: {
+    image: ["Quispe goes down the trail alone before first light, the blade left in the snow behind him. The mule string leaves camp short a driver, and the animals are restless."],
+    notices: ["The arrieros will remember this.", "The soldiers will remember this."],
+    end: "The camp law stands, and the mules are harder to handle."
+  },
+  both: {
+    image: ["Ortiz is given three nights on sentry, in the worst of the cold, and his sick friend goes uncared for while he stands watch. Quispe's knife is taken and put in your saddlebag; he walks beside his mules without a word, a driver with empty hands. Neither is broken, but neither is easy around you."],
+    notices: ["Ortiz will remember this.", "Quispe will remember this.", "The camp will remember this."],
+    end: "The law was kept, and no one was ruined. Everyone paid a little."
+  },
+  pardon: {
+    image: ["The ration is cut in two. Ortiz eats half and carries the rest back to his friend; Quispe takes the other half without a word, and neither thanks you. By dawn the men are saying you are soft."],
+    notices: ["Ortiz will remember this.", "Quispe will remember this.", "Some of the men will remember this."],
+    end: "No one was punished. The food will not last as long."
+  }
+};
+
+// ---- Engine ----------------------------------------------------------------------
+const stage = document.getElementById("stage");
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const SPEED = 1; // set below 1 to speed up while testing, e.g. ?speed=0.2
+const speed = parseFloat(new URLSearchParams(location.search).get("speed") || SPEED);
+const delay = ms => wait(ms * speed);
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text) e.textContent = text;
+  return e;
+}
+async function reveal(node, parent, pauseAfter = 1400) {
+  node.classList.add("fade");
+  parent.appendChild(node);
+  await delay(30);
+  node.classList.add("show");
+  await delay(pauseAfter);
+}
+
+// Hidden state for a possible v2. Never shown to the player.
+window.atomResult = null;
+
+async function play() {
+  stage.replaceChildren();
+  window.atomResult = null;
+  const rep = el("div", "report");
+  rep.appendChild(el("div", "", SCENE.report.title));
+  for (const [k, v] of SCENE.report.rows) {
+    const row = el("div");
+    row.append(el("span", "", k), el("span", "", v));
+    rep.appendChild(row);
+  }
+  await reveal(rep, stage, 2600);
+  await reveal(el("div", "kicker", SCENE.kicker), stage, 900);
+  for (const t of SCENE.paragraphs) await reveal(el("p", "", t), stage, 1500);
+  await reveal(el("p", "law", SCENE.law), stage, 2200);
+  await reveal(el("p", "", SCENE.prompt), stage, 1800); // the pause before the choice
+
+  const box = el("div", "choices");
+  const btns = SCENE.choices.map(c => {
+    const b = el("button");
+    b.append(c.label);
+    b.appendChild(el("small", "", c.sub));
+    b.dataset.id = c.id;
+    return b;
+  });
+  btns.forEach(b => box.appendChild(b));
+  await reveal(box, stage, 0);
+  btns.forEach(b => b.addEventListener("click", () => resolve(b.dataset.id, btns), { once:true }));
+}
+
+async function resolve(id, btns) {
+  btns.forEach(b => b.disabled = true);
+  const out = OUTCOMES[id];
+  window.atomResult = { scene:"camp", choice:id, remembered_by: out.notices.map(n => n.replace(" will remember this.", "")) };
+  await delay(1800);
+  stage.replaceChildren();
+  await reveal(el("div", "kicker", "Dawn"), stage, 1200);
+  for (const t of out.image) await reveal(el("p", "", t), stage, 2400);
+  for (const n of out.notices) await reveal(el("p", "notice", n), stage, 1600);
+  await reveal(el("p", "end", out.end), stage, 800);
+  const again = el("button", "restart", "Play again");
+  again.addEventListener("click", play);
+  await reveal(again, stage, 0);
+}
+
+play();
+</script>
+</body>
+</html>
